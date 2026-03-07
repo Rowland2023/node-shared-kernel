@@ -1,0 +1,11 @@
+{
+  "name": "my-org",
+  "private": true,
+  "workspaces": [
+    "shared-kernel",
+    "my-node-project"
+  ],
+  "dependencies": {
+    "dotenv": "^17.3.1"
+  }
+}
