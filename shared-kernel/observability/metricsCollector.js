@@ -13,4 +13,9 @@ export function recordHttpMetrics(method, route, statusCode, duration) {
   httpRequestDuration.labels(method, route, statusCode).observe(duration);
 }
 
+export const idempotencyHitCounter = new client.Counter({
+  name: 'idempotency_hits_total',
+  help: 'Number of duplicate requests blocked by idempotency key',
+});
+
 export { register };

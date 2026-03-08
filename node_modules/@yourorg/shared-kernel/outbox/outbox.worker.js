@@ -1,11 +1,12 @@
-// /shared/services/outboxProcessor.js
-import { fetchPendingEvents, markEventProcessed } from './outbox.repository.js';
-import { publishEvent } from '../infrastructure/messaging/publisher.js';
+import { services } from '../index.js';
 
-export async function processOutbox() {
-  const events = await fetchPendingEvents();
-  for (const event of events) {
-    await publishEvent(event.event_type, event.payload);
-    await markEventProcessed(event.id);
+console.log('🔄 Outbox Processor started (5s interval)');
+
+setInterval(async () => {
+  try {
+    // Ensure we are calling the function correctly from the services object
+    await services.processOutbox(); 
+  } catch (err) {
+    console.error('❌ Outbox Processor Error:', err.message);
   }
-}
+}, 5000);
