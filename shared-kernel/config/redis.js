@@ -1,36 +1,25 @@
-import Redis from 'ioredis';
+// 1. Point to the "Smart" redis file, NOT the cluster-only file
+import { redis } from '../infrastructure/cache/redis.cluster.js'; 
 
 /**
- * This script intelligently switches between Cluster and Standalone modes.
- * It prevents the "Failed to refresh slots cache" error by checking 
- * the REDIS_MODE environment variable.
+ * Reliability: Safety (Idempotency Check)
+ * NX = Only set if the key does NOT exist
+ * EX = Expire after TTL seconds
  */
+export async function checkAndSet(key, ttl = 60) {
+  try {
+    // Safety check: if Redis is down, we fail-open or fail-closed?
+    // For idempotency, we usually fail-closed (return false) to prevent double-processing.
+    if (redis.status !== 'ready' && redis.status !== 'connecting') {
+       console.warn('⚠️ Redis not ready, idling idempotency check');
+       return true; 
+    }
 
-const redisConfig = {
-  host: process.env.REDIS_HOST || '127.0.0.1',
-  port: parseInt(process.env.REDIS_PORT) || 6379,
-  password: process.env.REDIS_PASSWORD || undefined, // Use undefined if no password
-  retryStrategy: (times) => Math.min(times * 2000, 30000),
-};
-
-const isCluster = process.env.REDIS_MODE === 'cluster';
-
-export const redis = isCluster
-  ? new Redis.Cluster([{ host: redisConfig.host, port: redisConfig.port }], {
-      redisOptions: { password: redisConfig.password }
-    })
-  : new Redis(redisConfig);
-
-// Success Logging
-redis.on('connect', () => {
-  const mode = isCluster ? 'CLUSTER' : 'STANDALONE';
-  console.log(`✅ Redis connected (${mode} mode)`);
-});
-
-// Error Handling
-redis.on('error', (err) => {
-  // If we are in standalone mode, we want to see errors, but not the "slots" spam
-  if (!isCluster && err.message.includes('slots')) return;
-  
-  console.warn(`⚠️ [Redis] Status: ${err.message}`);
-});
+    const result = await redis.set(key, 'processed', 'NX', 'EX', ttl);
+    return result === 'OK'; 
+  } catch (err) {
+    console.error('❌ Idempotency Store Error:', err.message);
+    // If Redis fails, we throw so the Controller knows it's a 500
+    throw err; 
+  }
+}
