@@ -2,13 +2,15 @@ services:
   postgres:
     image: postgres:15-alpine
     container_name: my_postgres
+    restart: always
     environment:
-      # These now pull directly from your .env file
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_DB: ${DB_NAME}
     ports:
       - "${DB_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 5s
@@ -18,12 +20,16 @@ services:
   redis:
     image: redis:7-alpine
     container_name: my_redis
-    # Pulls password from .env for the startup command
-    command: redis-server --requirepass ${REDIS_PASSWORD}
+    restart: always
+    # Removed command override to allow passwordless access
     ports:
-      - "${REDIS_PORT}:6379"
+      - "${REDIS_PORT}:6379" # Maps Host (6380) to Container (6379)
     healthcheck:
-      test: ["CMD", "redis-cli", "-a", "${REDIS_PASSWORD}", "ping"]
+      # Removed -a flag since no password is required
+      test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
       retries: 5
+
+volumes:
+  postgres_data:

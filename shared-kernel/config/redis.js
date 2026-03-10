@@ -1,25 +1,26 @@
-// 1. Point to the "Smart" redis file, NOT the cluster-only file
 import { redis } from '../infrastructure/cache/redis.cluster.js'; 
 
 /**
  * Reliability: Safety (Idempotency Check)
- * NX = Only set if the key does NOT exist
- * EX = Expire after TTL seconds
  */
 export async function checkAndSet(key, ttl = 60) {
   try {
-    // Safety check: if Redis is down, we fail-open or fail-closed?
-    // For idempotency, we usually fail-closed (return false) to prevent double-processing.
-    if (redis.status !== 'ready' && redis.status !== 'connecting') {
-       console.warn('⚠️ Redis not ready, idling idempotency check');
-       return true; 
+    // 🛡️ THE FIX: Only attempt the 'set' if the status is explicitly 'ready'.
+    // If it is 'connecting', 'reconnecting', or 'end', we skip to prevent hanging.
+    if (redis.status !== 'ready') {
+       console.warn(`⚠️ Redis status is "${redis.status}". Skipping idempotency check to avoid hang.`);
+       return true; // "Fail-open": Allow the request to proceed if Redis is down
     }
 
+    // NX = Only set if key does not exist
+    // EX = Set expiration time
     const result = await redis.set(key, 'processed', 'NX', 'EX', ttl);
+    
     return result === 'OK'; 
   } catch (err) {
     console.error('❌ Idempotency Store Error:', err.message);
-    // If Redis fails, we throw so the Controller knows it's a 500
-    throw err; 
+    // Returning true lets the transaction proceed even if Redis is failing.
+    // Change to 'throw err' only if you want to block users when Redis is down.
+    return true; 
   }
 }

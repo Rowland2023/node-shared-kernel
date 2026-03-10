@@ -1,28 +1,35 @@
-// order/router.js
 import { Router } from 'express';
-import { middleware } from '@yourorg/shared-kernel';
 import * as OrderController from './controller.js';
-import { orderSchema, createOrder } from './models.js'; // Define your rules here
 
-const { rateLimiter, idempotencyMiddleware, validate } = middleware;
 const router = Router();
 
 /**
- * 🛒 Create Order Route
- * Logic: Validate data -> Check Idempotency -> Rate Limit -> Execute
+ * 💸 Minimal Ledger Transfer
+ * We have stripped the Redis-dependent middlewares to isolate the hang.
  */
-// Add this right BEFORE the router.post('/') call
-console.log('--- Orders Router Debug ---');
-console.log('1. validate(orderSchema):', typeof validate?.(orderSchema)); 
-console.log('2. idempotencyMiddleware:', typeof idempotencyMiddleware);
-console.log('3. rateLimiter(10, 60):', typeof rateLimiter?.(10, 60));
-console.log('4. OrderController.createOrder:', typeof OrderController.createOrder);
+router.post('/transfer', 
+  // ⏱️ 1. Safety Timeout (Keep this to catch DB hangs)
+  (req, res, next) => {
+    res.setTimeout(5000, () => {
+      console.error('⚠️ [Minimal Router] Request TIMEOUT at 5000ms');
+      if (!res.headersSent) {
+        res.status(408).json({ 
+          error: 'Request Timeout', 
+          detail: 'Auth passed, but logic hung at the Controller/DB level' 
+        });
+      }
+    });
+    next();
+  },
 
-router.post('/', 
-  validate(orderSchema),      // Ensure data is clean FIRST
-  idempotencyMiddleware,     // Prevent duplicate orders
-  rateLimiter(10, 60),       // Prevent bot spam
-  OrderController.placeOrder
+  // 🧪 2. Direct Entry Log
+  (req, res, next) => {
+    console.log('🚀 [Minimal Router] Auth context verified. Hitting Controller...');
+    next();
+  },
+
+  // 🏗️ 3. Direct Execution
+  OrderController.placeOrder 
 );
 
 export default router;

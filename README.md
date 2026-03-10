@@ -1,25 +1,67 @@
-🚀 My Node Project (Security Core)A robust, enterprise-grade Node.js microservice built with Clean Architecture principles, featuring a Transactional Outbox Pattern for reliable event-driven communication.🛠️ Tech StackRuntime: Node.js (ESM)Database: PostgreSQL (Primary & Replica pools)Cache: Redis (Standalone & Cluster support)Messaging: Kafka (High-throughput event streaming)Architecture: Hexagonal / Clean Architecture🏗️ Key Architecture PatternsTransactional OutboxTo ensure data consistency between the database and our message broker (Kafka/Redis), we implement the Outbox Pattern. This prevents "Dual Writes" issues by saving events to a local outbox table within the same transaction as the business logic.Idempotency SupportThe API includes an idempotencyMiddleware that uses Redis to track x-idempotency-key headers, ensuring that duplicate requests (e.g., due to network retries) do not result in duplicate orders.🚀 Getting Started1. Environment ConfigurationCreate a .env file in the root directory:Code snippetDB_HOST=127.0.0.1
-DB_PORT=5432
-DB_USER=postgres
-DB_PASSWORD=your_password
-DB_NAME=security_db
+🚀 My Node Project (Order & Ledger System)
+A high-concurrency, cloud-native backend designed for financial integrity. This project utilizes a decoupled microservices architecture where specific domains (Orders, Ledger) consume a central Shared Kernel for infrastructure and common utilities.
 
-REDIS_HOST=127.0.0.1
-REDIS_PORT=6379
-REDIS_MODE=standalone
-2. Database SetupEnsure the outbox table is initialized in your PostgreSQL instance:SQLCREATE TABLE outbox (
-    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    event_type VARCHAR(255) NOT NULL,
-    payload JSONB NOT NULL,
-    status VARCHAR(50) DEFAULT 'PENDING',
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-);
-3. Installation & ExecutionThis project uses npm workspaces.Bash# Install dependencies
-npm install
+🏗️ Architecture Overview
+The system follows the Transactional Outbox Pattern to ensure data consistency between the relational database (PostgreSQL) and the message broker (Kafka).
 
-# Start the specific workspace
+Shared Kernel: Contains primary database pools, Redis configuration, and global middleware.
+
+Order Module: Handles high-concurrency order placement using PostgreSQL transactions.
+
+Ledger Module: Consumes order events to maintain an immutable financial journal.
+
+Infrastructure: Runs on Docker with standalone Redis (Port 6380) and PostgreSQL.
+
+🛠️ Getting Started
+1. Environment Configuration
+The project uses a root-level .env file. The Shared Kernel is designed to automatically resolve this path even when running within a specific workspace.
+
+2. Authentication
+Before making requests, you must generate a valid JWT.
+
+Bash
+node gen-token.js
+3. Running the Server
+This project is part of a monorepo. Start the specific workspace using:
+
+Bash
 npm run start --workspace=my-node-project
-🚦 API Endpoints (Orders)MethodEndpointDescriptionHeadersPOST/ordersPlace a new orderx-idempotency-keyGET/healthService health checkN/A🔄 Background ProcessesOutbox ProcessorInterval: 5 secondsFunction: Polls the outbox table for PENDING events, publishes them to the message broker, and updates status to COMPLETED.Reliability: Uses FOR UPDATE SKIP LOCKED to support multiple concurrent worker instances without event duplication.🧪 Testing the FlowTo verify the system end-to-end, use the following curl command:Bashcurl -X POST http://localhost:3000/orders \
+🧪 API Usage
+Place a Transfer Order
+Endpoint: POST /api/orders/transfer
+
+Auth: Required (Bearer Token)
+
+Example Request:
+
+Bash
+curl -i -X POST http://localhost:3000/api/orders/transfer \
   -H "Content-Type: application/json" \
-  -H "x-idempotency-key: $(date +%s)" \
-  -d '{"customerId": "user_1", "items": [{"productId": "p1", "quantity": 1}], "total" : 10.00}'
+  -H "Authorization: Bearer <YOUR_TOKEN>" \
+  -H "X-Idempotency-Key: ledger-unique-id-001" \
+  -d '{
+    "customer_id": "user_123",
+    "total": 100.00,
+    "items": [{"id": "transfer_item_A", "qty": 1}]
+  }'
+🛰️ Infrastructure Logs (The "Happy Path")
+When the system is healthy, you will see the following sequence in your terminal:
+
+📡 Config: Successfully loaded from root .env.
+
+🔄 Outbox: Processor started (5s interval).
+
+✅ Infrastructure: Redis (6380) and Postgres (security_db) connected.
+
+🛡️ Auth: Context established via JWT.
+
+🚀 Controller: Transaction started -> Order Created -> Success.
+
+🗄️ Database Schema
+The system requires the following relational structure:
+
+orders: Stores the parent transaction status.
+
+order_items: Linked via order_id (Many-to-One).
+
+outbox: Stores events to be published to Kafka.
