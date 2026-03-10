@@ -3,7 +3,7 @@ import Redis from 'ioredis';
 // 1. Strict Config Cleaning
 const getRedisPassword = () => {
   const pwd = process.env.REDIS_PASSWORD;
-  // If the variable is missing, empty, or the literal string 'undefined'/'null'
+  // Handle empty or undefined strings from .env
   if (!pwd || pwd.trim() === '' || pwd === 'undefined' || pwd === 'null') {
     return null;
   }
@@ -12,7 +12,7 @@ const getRedisPassword = () => {
 
 const config = {
   host: process.env.REDIS_HOST || '127.0.0.1',
-  port: Number(process.env.REDIS_PORT) || 6379,
+  port: Number(process.env.REDIS_PORT) || 6380, // Default to 6380 based on your .env
   password: getRedisPassword(),
   mode: process.env.REDIS_MODE || 'standalone',
 };
@@ -22,11 +22,13 @@ const config = {
  */
 const createClient = () => {
   const commonOptions = {
-    // 🛡️ THE KEY: If password is null, this key is NOT added to the object at all.
     ...(config.password && { password: config.password }),
     retryStrategy: (times) => Math.min(times * 2000, 30000),
-    enableOfflineQueue: true,
-    connectTimeout: 10000,
+    
+    // 🛡️ THE FIX: Disable offline queue to prevent the "Hanging Curl"
+    // If Redis is down, we want an immediate error, not a pending promise.
+    enableOfflineQueue: false, 
+    connectTimeout: 5000,
   };
 
   if (config.mode === 'cluster') {
@@ -46,13 +48,14 @@ const createClient = () => {
 export const redis = createClient();
 
 // 2. Lifecycle Logging
-redis.on('connect', () => console.log(`📡 Redis: Connecting to ${config.mode}...`));
+redis.on('connect', () => console.log(`📡 Redis: Connecting to ${config.mode} on port ${config.port}...`));
 redis.on('ready', () => console.log(`🚀 Redis: Ready (${config.mode})`));
 
 redis.on('error', (err) => {
   if (err.message.includes('NOAUTH')) {
     console.error('❌ Redis Auth Error: Check your REDIS_PASSWORD in .env');
   } else {
+    // This will now log instantly if port 6380 is blocked/refused
     console.warn(`⚠️ Redis Error: ${err.message}`);
   }
 });

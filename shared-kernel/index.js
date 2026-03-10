@@ -1,10 +1,15 @@
-// /shared-kernel/index.js
+/**
+ * Shared Kernel - Main Entry Point
+ * Flattened exports allow for: import { authMiddleware, validate } from '@yourorg/shared-kernel'
+ */
 
 // 1. Config
-import * as config from './config/index.js';
-export { config };
+export * as config from './config/index.js';
 
-// 2. Middleware
+// 2. Middleware (FLATTENED)
+// This allows: import { authMiddleware, validate, rateLimiter } from '@yourorg/shared-kernel'
+export * from './middleware/index.js'; 
+// We still keep the object export for backward compatibility if needed
 import * as middleware from './middleware/index.js';
 export { middleware };
 
@@ -36,20 +41,17 @@ import * as outboxRepository from './outbox/outbox.repository.js';
 import * as outboxWorker from './outbox/outbox.worker.js';
 import * as sagaCoordinator from './saga/saga.coordinator.js';
 import * as sagaDefinitions from './saga/saga.definitions.js';
-
-// Explicitly import so we can use it in 'services' AND export it at top-level
 import { processOutbox } from './outbox/outboxProcessor.js';
 
 export const services = {
   ...idempotencyStore,
   ...outboxRepository,
   ...outboxWorker,
-  processOutbox, // Now this is defined
+  processOutbox,
   ...sagaCoordinator,
   ...sagaDefinitions,
 };
 
-// Top-level export to fix the "processOutbox is not a function" error in index.js
 export { processOutbox };
 
 // 6. Observability

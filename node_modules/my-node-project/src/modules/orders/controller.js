@@ -1,30 +1,37 @@
-import * as orderModel from './models.js';
-import { services, observability } from '@yourorg/shared-kernel';
+// src/modules/orders/controller.js
+import { getClient, createOrder } from './models.js'; 
 
-/**
- * RELIABILITY: Atomic Order Placement
- * This function ensures the order is saved AND an outbox event is 
- * recorded in a single flow for eventual consistency.
- */
 export async function placeOrder(req, res) {
+  let client;
   try {
-    // 1. PERSISTENCE: Save to Postgres
-    const result = await orderModel.createOrder(req.body);
-
-    // 2. RELIABILITY: Save to Outbox (Atomic intent to notify other services)
-    // This ensures that even if Kafka is down, the event isn't lost.
-    await services.outboxRepository.saveEvent('OrderPlaced', result.rows[0]);
-
-    // 3. OBSERVABILITY: Structured Logging
-    observability.logger.info('✅ Order placed successfully', { orderId: result.rows[0].id });
+    console.log('🚀 [OrderController] Step 0: Requesting DB Client...');
     
-    res.status(201).json(result.rows[0]);
-  } catch (err) {
-    // 4. FAULT TOLERANCE: Log error but don't leak internals to the client
-    observability.logger.error('❌ Order placement failed', { error: err.message });
-    res.status(500).json({ error: 'Internal Server Error' });
+    // Call the function directly instead of orderModel.getClient()
+    client = await getClient();
+
+    await client.query('BEGIN');
+    console.log('🚀 [OrderController] Step 1: Transaction Started');
+
+    const newOrder = await createOrder(req.body, client);
+    console.log('🚀 [OrderController] Step 2: Order Created:', newOrder.id);
+
+    await client.query('COMMIT');
+    console.log('✅ Order placed successfully');
+
+    return res.status(201).json(newOrder);
+
+  } catch (error) {
+    if (client) await client.query('ROLLBACK');
+    console.error('💥 Controller Error:', error.message);
+    
+    return res.status(500).json({ 
+      error: 'Internal Server Error',
+      detail: error.message 
+    });
+  } finally {
+    if (client) {
+      client.release();
+      console.log('📡 DB Client released back to pool');
+    }
   }
 }
-
-// ALIAS: To fix the "undefined" error in your router without changing the router code:
-export { placeOrder as createOrder };
