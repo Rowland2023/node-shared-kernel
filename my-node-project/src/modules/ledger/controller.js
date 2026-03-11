@@ -1,61 +1,46 @@
-// ledger/controller.js
-import * as ledgerModel from './models.js'; 
+import { ledgerModel } from './models.js'; // Fixed import syntax
 import { services, observability } from '@yourorg/shared-kernel';
 
-/**
- * RELIABILITY: Atomic Ledger Transfer
- * This version uses the naming convention your router expects
- */
 export const handleTransfer = async (req, res) => {
   console.log('🎯 STEP 1: Controller Reached'); 
   
-  // Extract values (matching your working version's variable names)
-  const { toUserId, amount } = req.body;
-  const fromUserId = req.user?.id; // Safety check for authMiddleware
+  // Aligning keys with the model's expected parameters
+  const { account_id, amount, type, reference, currency } = req.body;
+  const authUser = req.user?.id; 
 
   try {
-    // 1. PERSISTENCE: Record the transfer
-    console.log('⏳ STEP 1.5: Attempting Database Write...');
-    const result = await ledgerModel.createTransfer({ 
-      from: fromUserId, 
-      to: toUserId, 
-      amount 
-    });
+    console.log('⏳ STEP 1.5: Attempting Atomic Database Write...');
     
-    const transactionData = result.rows[0];
+    // Call the model function directly from the named export
+    const transactionData = await ledgerModel.createTransfer({ 
+      account_id: account_id || authUser, // Fallback to auth user if account_id missing
+      amount, 
+      type: type || 'DEBIT',
+      reference: reference || 'API_TRANSFER',
+      currency: currency || 'NGN'
+    });
 
-    // 2. RELIABILITY: Atomic Outbox Entry for eventual consistency
-    console.log('⏳ STEP 2: Attempting Outbox Save...');
-    await services.outboxRepository.saveEvent('TransferCreated', transactionData);
-
-    // 3. OBSERVABILITY: Structured Logging
+    // Logging for Lagos Observability stack
     observability.logger.info('✅ Transfer successful', { 
-      transactionId: transactionData.id,
-      fromUserId 
+      ledgerId: transactionData.ledger_id,
+      user: authUser 
     });
 
     console.log('🎯 STEP 3: Logic Completed. Sending response.');
-    return res.status(200).json({
+    return res.status(201).json({
       success: true,
-      message: "Transaction completed successfully.",
+      message: "Transaction completed and scheduled for relay.",
       data: transactionData
     });
 
   } catch (err) {
-    console.log('🎯 ERROR CAUGHT:', err.message);
+    console.error('🎯 ERROR CAUGHT:', err.message);
     
-    // Business Logic Error Handling
-    if (err.message === 'Insufficient funds') {
-      return res.status(400).json({ error: "Transaction Failed", message: err.message });
-    }
-
     observability.logger.error('❌ Critical Ledger Error', { error: err.message });
     
-    if (!res.headersSent) {
-      return res.status(500).json({ 
-        error: "Internal Server Error", 
-        message: "An unexpected error occurred." 
-      });
-    }
+    return res.status(500).json({ 
+      error: "Internal Server Error", 
+      message: err.message 
+    });
   }
 };
