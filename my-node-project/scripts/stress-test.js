@@ -1,5 +1,5 @@
-// scripts/stress-test.js
 import { infrastructure } from '../../shared-kernel/index.js'; 
+import { processOutbox } from '../../shared-kernel/outbox/outboxProcessor.js';
 
 const { primaryPool } = infrastructure;
 
@@ -9,6 +9,11 @@ async function generateLoad(count = 100) {
     return;
   }
 
+  // --- CRITICAL FIX: CONNECT KAFKA FIRST ---
+  console.log('📡 Warming up Infrastructure (Kafka, Redis, Postgres)...');
+  await infrastructure.connectKafka(); 
+  // -----------------------------------------
+
   console.log(`🚀 Injecting ${count} concurrent transfers into the Ledger...`);
   
   const tasks = [];
@@ -17,11 +22,6 @@ async function generateLoad(count = 100) {
   for (let i = 0; i < count; i++) {
     const amount = (Math.random() * 1000).toFixed(2);
     
-    /**
-     * UPDATED QUERY:
-     * We now include aggregate_type and aggregate_id to satisfy 
-     * the NOT NULL constraints in your existing outbox schema.
-     */
     const query = {
       text: `
         WITH ledger_entry AS (
@@ -58,9 +58,18 @@ async function generateLoad(count = 100) {
     await Promise.all(tasks);
     const duration = Date.now() - start;
     console.log(`✅ Successfully injected ${count} events in ${duration}ms`);
+
+    // Trigger the outbox relay immediately after injection
+    console.log('🔄 Triggering Outbox Relay...');
+    await processOutbox(); 
+
   } catch (err) {
     console.error('❌ Stress Test Failed:', err.message);
+  } finally {
+    // Optional: Close pool if you want the script to exit immediately
+    // await primaryPool.end();
   }
 }
 
-generateLoad(100);
+// Execute the bootstrap
+generateLoad(100).catch(console.error);
