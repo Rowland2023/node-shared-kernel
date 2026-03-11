@@ -1,67 +1,44 @@
-🚀 My Node Project (Order & Ledger System)
-A high-concurrency, cloud-native backend designed for financial integrity. This project utilizes a decoupled microservices architecture where specific domains (Orders, Ledger) consume a central Shared Kernel for infrastructure and common utilities.
+📄 High-Integrity Financial Ledger & Outbox System A robust backend architecture designed for financial precision and distributed reliability. Implements a high-performance double-entry ledger using Node.js (ES6), Postgres, Redis, and Redpanda.
 
-🏗️ Architecture Overview
-The system follows the Transactional Outbox Pattern to ensure data consistency between the relational database (PostgreSQL) and the message broker (Kafka).
+🏗️ Core PrinciplesTransactional Outbox Pattern: Atomic consistency between DB changes and event broadcasts.
+Financial Precision: NUMERIC(19,4) for currency accuracy.
+Reliability: DLQ, idempotency, and retries with exponential backoff.
+Performance: Concurrent transactions with ~6ms latency per operation.
 
-Shared Kernel: Contains primary database pools, Redis configuration, and global middleware.
+🛠️ Tech StackComponentTechnologyPurposeRuntimeNode.js v24+ (ESM)Async event execution via ES ModulesDatabasePostgreSQL 15Source of truth & outbox storageMessagingRedpandaKafka-compatible event streamingCache/LockRedis 7Idempotency & distributed locksConfigDotenvxSecure environment management
 
-Order Module: Handles high-concurrency order placement using PostgreSQL transactions.
+🚀 Getting Started1. Infrastructure (Docker)Bashdocker-compose up -d
+Postgres: 5432 | Redis: 6380 | Redpanda: 190922. 
+Schema SetupRun in security_db:SQLCREATE TABLE ledger (
+    id SERIAL PRIMARY KEY,
+    account_id VARCHAR(50) NOT NULL,
+    amount NUMERIC(19, 4) NOT NULL,
+    type VARCHAR(10) CHECK (type IN ('CREDIT', 'DEBIT')),
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
+);
 
-Ledger Module: Consumes order events to maintain an immutable financial journal.
+CREATE TABLE outbox (
+    id SERIAL PRIMARY KEY,
+    event_type VARCHAR(100) NOT NULL,
+    aggregate_type VARCHAR(50) NOT NULL,
+    aggregate_id VARCHAR(50) NOT NULL,
+    payload JSONB NOT NULL,
+    status VARCHAR(20) DEFAULT 'PENDING',
+    retry_count INTEGER DEFAULT 0,
+    error_message TEXT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
+    processed_at TIMESTAMP WITH TIME ZONE
+);
+3. Verification Commands Diagnostics: node shared-kernel/infrastructure/diagnostics/health.js
+Stress Test: node scripts/stress-test.js
+Outbox Worker: node shared-kernel/outbox/outboxProcessor.js
 
-Infrastructure: Runs on Docker with standalone Redis (Port 6380) and PostgreSQL.
+🔍 Observability & ReliabilityMonitoring: Real-time DB latency, Redis health, and Redpanda metadata checks.DLQ: Failed events > 3 retries are moved to LEDGER_DLQ.Topic Inspection:Bashdocker exec -it redpanda-cl rpk topic consume FUNDS_TRANSFERRED
 
-🛠️ Getting Started
-1. Environment Configuration
-The project uses a root-level .env file. The Shared Kernel is designed to automatically resolve this path even when running within a specific workspace.
+🤝 Contribution StandardsIdempotency First: Consumers must check eventId to prevent duplicate processing.
+ES6 Only: Use import/export. No require() allowed.
+Zero Downtime: Worker loops must use Safe Polling (Math.max(0)) to prevent event loop blocking.
 
-2. Authentication
-Before making requests, you must generate a valid JWT.
-
-Bash
-node gen-token.js
-3. Running the Server
-This project is part of a monorepo. Start the specific workspace using:
-
-Bash
-npm run start --workspace=my-node-project
-🧪 API Usage
-Place a Transfer Order
-Endpoint: POST /api/orders/transfer
-
-Auth: Required (Bearer Token)
-
-Example Request:
-
-Bash
-curl -i -X POST http://localhost:3000/api/orders/transfer \
-  -H "Content-Type: application/json" \
-  -H "Authorization: Bearer <YOUR_TOKEN>" \
-  -H "X-Idempotency-Key: ledger-unique-id-001" \
-  -d '{
-    "customer_id": "user_123",
-    "total": 100.00,
-    "items": [{"id": "transfer_item_A", "qty": 1}]
-  }'
-🛰️ Infrastructure Logs (The "Happy Path")
-When the system is healthy, you will see the following sequence in your terminal:
-
-📡 Config: Successfully loaded from root .env.
-
-🔄 Outbox: Processor started (5s interval).
-
-✅ Infrastructure: Redis (6380) and Postgres (security_db) connected.
-
-🛡️ Auth: Context established via JWT.
-
-🚀 Controller: Transaction started -> Order Created -> Success.
-
-🗄️ Database Schema
-The system requires the following relational structure:
-
-orders: Stores the parent transaction status.
-
-order_items: Linked via order_id (Many-to-One).
-
-outbox: Stores events to be published to Kafka.
+🧹 MaintenancePurge Events: DELETE FROM outbox WHERE status = 'COMPLETED' AND processed_at < NOW() - INTERVAL '7 days';
+Monitor Errors: Group outbox by error_message to identify system bottlenecks.
+Developed with precision in Lagos, Nigeria.
