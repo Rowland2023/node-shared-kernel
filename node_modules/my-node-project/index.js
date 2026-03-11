@@ -16,12 +16,11 @@ const PORT = process.env.PORT || 3000;
 const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-for-dev';
 
 /**
- * 3. MIDDLEWARE STACK (Order Matters!)
+ * 3. MIDDLEWARE STACK
  */
-// A. Standard JSON Parsing
 app.use(express.json());
 
-// B. Global Logging (Crucial for debugging "hangs")
+// Global Logging
 app.use((req, res, next) => {
   console.log(`📡 [${new Date().toISOString()}] ${req.method} ${req.url}`);
   next();
@@ -29,12 +28,11 @@ app.use((req, res, next) => {
 
 /**
  * 4. PUBLIC ROUTES
- * These must be defined BEFORE the global auth bouncer.
  */
 app.get('/ping', (req, res) => res.status(200).send('pong'));
 
 /**
- * 5. DYNAMIC SHARED-KERNEL IMPORT & INITIALIZATION
+ * 5. DYNAMIC SHARED-KERNEL IMPORT
  */
 const { 
   middleware, 
@@ -47,7 +45,6 @@ const { authMiddleware } = middleware;
 
 /**
  * 6. THE BOUNCER (Global Authentication)
- * We call authMiddleware(JWT_SECRET) so it returns the actual (req, res, next) function.
  */
 app.use(authMiddleware(JWT_SECRET));
 
@@ -63,7 +60,6 @@ app.get('/me', (req, res) => {
 
 /**
  * 8. GLOBAL ERROR HANDLER
- * Catches malformed JSON and unhandled middleware exceptions.
  */
 app.use((err, req, res, next) => {
   if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
@@ -78,21 +74,30 @@ app.use((err, req, res, next) => {
 });
 
 /**
- * 9. INFRASTRUCTURE & STARTUP
+ * 9. INFRASTRUCTURE & STARTUP (The "Gatekeeper" Pattern)
  */
 (async () => {
   try {
-    // Verify DB
+    // A. Verify DB Connection
     await primaryPool.query('SELECT 1');
     console.log('✅ Postgres connected to:', process.env.DB_NAME);
 
-    // Start Outbox Worker
-    await processOutbox(); 
+    // B. CRITICAL: Warm up the Kafka Producer
+    // This prevents "Producer is disconnected" errors during the first relay tick
+    console.log('📡 Connecting to Kafka/Redpanda...');
+    await infrastructure.connectKafka(); 
+    console.log('✅ Kafka Producer Connected');
+
+    // C. Start Outbox Worker 
+    // We don't 'await' this because it's a continuous background loop
+    processOutbox(); 
     console.log('🔄 Outbox Processor Active');
 
+    // D. Start the API Server
     app.listen(PORT, () => {
       console.log(`🚀 Server listening on http://localhost:${PORT}`);
     });
+
   } catch (err) {
     console.error('❌ Bootstrapping failed:', err.message);
     process.exit(1);

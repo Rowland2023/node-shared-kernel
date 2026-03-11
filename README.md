@@ -7,7 +7,8 @@ Performance: Concurrent transactions with ~6ms latency per operation.
 
 🛠️ Tech StackComponentTechnologyPurposeRuntimeNode.js v24+ (ESM)Async event execution via ES ModulesDatabasePostgreSQL 15Source of truth & outbox storageMessagingRedpandaKafka-compatible event streamingCache/LockRedis 7Idempotency & distributed locksConfigDotenvxSecure environment management
 
-🚀 Getting Started1. Infrastructure (Docker)Bashdocker-compose up -d
+🚀 Getting Started1. Infrastructure (Docker)
+Bash docker-compose up -d
 Postgres: 5432 | Redis: 6380 | Redpanda: 190922. 
 Schema SetupRun in security_db:SQLCREATE TABLE ledger (
     id SERIAL PRIMARY KEY,
