@@ -9,9 +9,13 @@ Performance: Concurrent transactions with ~6ms latency per operation.
 🛠️ Tech StackComponentTechnologyPurposeRuntimeNode.js v24+ (ESM)Async event execution via ES ModulesDatabasePostgreSQL 15Source of truth & outbox storageMessagingRedpandaKafka-compatible event streamingCache/LockRedis 7Idempotency & distributed locksConfigDotenvxSecure environment management
 
 🚀 Getting Started1. Infrastructure (Docker)
+
+Bash docker-compose up -d
+
 The system is fully containerized. To spin up the ecosystem:
 Bash 
 docker-compose up -d
+
 Postgres: 5432 | Redis: 6380 | Redpanda: 190922. 
 Schema Setup
 Execute the following in your security_db instance:
