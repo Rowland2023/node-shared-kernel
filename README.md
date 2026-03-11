@@ -1,6 +1,7 @@
 📄 High-Integrity Financial Ledger & Outbox System A robust backend architecture designed for financial precision and distributed reliability. Implements a high-performance double-entry ledger using Node.js (ES6), Postgres, Redis, and Redpanda.
 
-🏗️ Core PrinciplesTransactional Outbox Pattern: Atomic consistency between DB changes and event broadcasts.
+🏗️ Core Principles
+Transactional Outbox Pattern: Atomic consistency between DB changes and event broadcasts.
 Financial Precision: NUMERIC(19,4) for currency accuracy.
 Reliability: DLQ, idempotency, and retries with exponential backoff.
 Performance: Concurrent transactions with ~6ms latency per operation.
@@ -8,9 +9,17 @@ Performance: Concurrent transactions with ~6ms latency per operation.
 🛠️ Tech StackComponentTechnologyPurposeRuntimeNode.js v24+ (ESM)Async event execution via ES ModulesDatabasePostgreSQL 15Source of truth & outbox storageMessagingRedpandaKafka-compatible event streamingCache/LockRedis 7Idempotency & distributed locksConfigDotenvxSecure environment management
 
 🚀 Getting Started1. Infrastructure (Docker)
+
 Bash docker-compose up -d
+
+The system is fully containerized. To spin up the ecosystem:
+Bash 
+docker-compose up -d
+
 Postgres: 5432 | Redis: 6380 | Redpanda: 190922. 
-Schema SetupRun in security_db:SQLCREATE TABLE ledger (
+Schema Setup
+Execute the following in your security_db instance:
+CREATE TABLE ledger (
     id SERIAL PRIMARY KEY,
     account_id VARCHAR(50) NOT NULL,
     amount NUMERIC(19, 4) NOT NULL,
@@ -36,10 +45,12 @@ Outbox Worker: node shared-kernel/outbox/outboxProcessor.js
 
 🔍 Observability & ReliabilityMonitoring: Real-time DB latency, Redis health, and Redpanda metadata checks.DLQ: Failed events > 3 retries are moved to LEDGER_DLQ.Topic Inspection:Bashdocker exec -it redpanda-cl rpk topic consume FUNDS_TRANSFERRED
 
-🤝 Contribution StandardsIdempotency First: Consumers must check eventId to prevent duplicate processing.
+🤝 Contribution Standards
+Idempotency First: Consumers must check eventId to prevent duplicate processing.
 ES6 Only: Use import/export. No require() allowed.
 Zero Downtime: Worker loops must use Safe Polling (Math.max(0)) to prevent event loop blocking.
 
-🧹 MaintenancePurge Events: DELETE FROM outbox WHERE status = 'COMPLETED' AND processed_at < NOW() - INTERVAL '7 days';
+🧹 Maintenance
+Purge Events: DELETE FROM outbox WHERE status = 'COMPLETED' AND processed_at < NOW() - INTERVAL '7 days';
 Monitor Errors: Group outbox by error_message to identify system bottlenecks.
 Developed with precision in Lagos, Nigeria.
