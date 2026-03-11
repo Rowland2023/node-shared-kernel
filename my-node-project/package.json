@@ -19,7 +19,6 @@
     "@yourorg/shared-kernel": "*",
     "dotenv": "^16.4.7",
     "express": "^5.2.1",
-    "kafkajs": "^2.2.4",
     "pg": "^8.20.0"
   }
 }
