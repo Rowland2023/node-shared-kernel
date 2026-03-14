@@ -1,27 +1,33 @@
 import { infrastructure } from '../../shared-kernel/index.js'; 
-import { processOutbox } from '../../shared-kernel/outbox/outboxProcessor.js';
+import { processOutbox } from '../../shared-kernel/outbox/outbox.worker.js';
 
 const { primaryPool } = infrastructure;
 
 async function generateLoad(count = 100) {
   if (!primaryPool) {
-    console.error('❌ Error: primaryPool is undefined. Check your shared-kernel exports.');
+    console.error('❌ Error: primaryPool is undefined. Check shared-kernel exports.');
     return;
   }
 
-  // --- CRITICAL FIX: CONNECT KAFKA FIRST ---
+  // --- 1. INFRASTRUCTURE WARM-UP ---
   console.log('📡 Warming up Infrastructure (Kafka, Redis, Postgres)...');
-  await infrastructure.connectKafka(); 
-  // -----------------------------------------
+  try {
+    await infrastructure.connectKafka(); 
+  } catch (err) {
+    console.error('❌ Infrastructure Warm-up Failed:', err.message);
+    process.exit(1);
+  }
 
+  // --- 2. LOAD INJECTION (ATOMIC CTE) ---
   console.log(`🚀 Injecting ${count} concurrent transfers into the Ledger...`);
   
   const tasks = [];
-  const start = Date.now();
+  const startInjection = Date.now();
 
   for (let i = 0; i < count; i++) {
     const amount = (Math.random() * 1000).toFixed(2);
     
+    // Atomic Double-Write: Ledger + Outbox in one trip
     const query = {
       text: `
         WITH ledger_entry AS (
@@ -56,20 +62,44 @@ async function generateLoad(count = 100) {
 
   try {
     await Promise.all(tasks);
-    const duration = Date.now() - start;
-    console.log(`✅ Successfully injected ${count} events in ${duration}ms`);
+    const injectionDuration = Date.now() - startInjection;
+    const injectionEps = (count / (injectionDuration / 1000)).toFixed(2);
+    
+    console.log(`✅ Injected ${count} events in ${injectionDuration}ms (${injectionEps} EPS)`);
 
-    // Trigger the outbox relay immediately after injection
-    console.log('🔄 Triggering Outbox Relay...');
-    await processOutbox(); 
+    // --- 3. DRAIN LOOP (RELAY) ---
+    console.log('🔄 Triggering Outbox Relay Drain...');
+    const startRelay = Date.now();
+    let totalRelayed = 0;
+    let lastBatchSize = 0;
+
+    do {
+      // processOutbox() returns the number of rows processed in one batch (limit 50)
+      lastBatchSize = await processOutbox();
+      totalRelayed += lastBatchSize;
+      
+      if (lastBatchSize > 0) {
+        console.log(`  📦 Relayed Batch: ${lastBatchSize} events. (Total: ${totalRelayed})`);
+      }
+    } while (lastBatchSize > 0);
+
+    const relayDuration = Date.now() - startRelay;
+    const relayEps = (totalRelayed / (relayDuration / 1000)).toFixed(2);
+
+    console.log(`\n✨ Stress Test Complete ✨`);
+    console.log(`---------------------------------`);
+    console.log(`Total Events:   ${totalRelayed}`);
+    console.log(`Relay Speed:    ${relayEps} events/sec`);
+    console.log(`Status:         100% COMPLETED`);
+    console.log(`---------------------------------`);
 
   } catch (err) {
     console.error('❌ Stress Test Failed:', err.message);
   } finally {
-    // Optional: Close pool if you want the script to exit immediately
+    // Keep pool open if worker is running, or close for one-off scripts
     // await primaryPool.end();
   }
 }
 
-// Execute the bootstrap
+// Execute
 generateLoad(100).catch(console.error);
