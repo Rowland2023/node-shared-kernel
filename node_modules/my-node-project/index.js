@@ -3,99 +3,40 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import express from 'express';
 
-// 1. MODULE ROUTER IMPORTS
-import ledgerRouter from './src/modules/ledger/router.js';
-import orderRouter from './src/modules/orders/router.js';
-
-// 2. RESOLVE DOTENV PATH
+// 1. LOAD ENV IMMEDIATELY (Before importing the kernel)
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 config({ path: path.resolve(__dirname, '../.env') });
 
-const app = express();
-const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.JWT_SECRET || 'fallback-secret-for-dev';
-
-/**
- * 3. MIDDLEWARE STACK
- */
-app.use(express.json());
-
-// Global Logging
-app.use((req, res, next) => {
-  console.log(`📡 [${new Date().toISOString()}] ${req.method} ${req.url}`);
-  next();
-});
-
-/**
- * 4. PUBLIC ROUTES
- */
-app.get('/ping', (req, res) => res.status(200).send('pong'));
-
-/**
- * 5. DYNAMIC SHARED-KERNEL IMPORT
- */
+// 2. NOW IMPORT THE KERNEL (Now that process.env is populated)
 const { 
-  middleware, 
   infrastructure, 
-  processOutbox 
+  startOutboxWorker,
+  startCleanupJob
 } = await import('@yourorg/shared-kernel');
 
-const { primaryPool } = infrastructure;
-const { authMiddleware } = middleware;
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-/**
- * 6. THE BOUNCER (Global Authentication)
- */
-app.use(authMiddleware(JWT_SECRET));
-
-/**
- * 7. PROTECTED MODULE ROUTES
- */
-app.use('/api/ledger', ledgerRouter);
-app.use('/api/orders', orderRouter);
-
-app.get('/me', (req, res) => {
-  res.json({ message: 'Identity confirmed.', user: req.user });
-});
-
-/**
- * 8. GLOBAL ERROR HANDLER
- */
-app.use((err, req, res, next) => {
-  if (err instanceof SyntaxError && err.status === 400 && 'body' in err) {
-    console.error('❌ JSON Syntax Error:', err.message);
-    return res.status(400).json({ error: "Malformed JSON payload" });
-  }
-  
-  console.error('💥 Server Error:', err.stack);
-  if (!res.headersSent) {
-    res.status(500).json({ error: "Internal Server Error" });
-  }
-});
-
-/**
- * 9. INFRASTRUCTURE & STARTUP (The "Gatekeeper" Pattern)
- */
 (async () => {
   try {
-    // A. Verify DB Connection
-    await primaryPool.query('SELECT 1');
-    console.log('✅ Postgres connected to:', process.env.DB_NAME);
+    console.log('🏁 Starting Bootstrap...');
 
-    // B. CRITICAL: Warm up the Kafka Producer
-    // This prevents "Producer is disconnected" errors during the first relay tick
-    console.log('📡 Connecting to Kafka/Redpanda...');
+    // 3. SEQUENTIAL BOOT (The Waterfall)
+    // Connecting Redis first
+    await infrastructure.connectRedis();
+    
+    // Connecting Kafka (This will now find your brokers in process.env)
+    console.log('📡 Connecting to Kafka...');
     await infrastructure.connectKafka(); 
     console.log('✅ Kafka Producer Connected');
 
-    // C. Start Outbox Worker 
-    // We don't 'await' this because it's a continuous background loop
-    processOutbox(); 
-    console.log('🔄 Outbox Processor Active');
-
-    // D. Start the API Server
-    app.listen(PORT, () => {
+    // 4. START SERVER
+    const server = app.listen(PORT, () => {
       console.log(`🚀 Server listening on http://localhost:${PORT}`);
+      
+      // 5. START WORKERS (Wait for idle to prevent TimeoutNegativeWarning)
+      startOutboxWorker(5000); 
+      startCleanupJob();
     });
 
   } catch (err) {

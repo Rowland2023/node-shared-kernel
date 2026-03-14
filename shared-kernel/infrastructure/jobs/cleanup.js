@@ -1,19 +1,14 @@
-import { primaryPool } from '@yourorg/shared-kernel';
-
-/**
- * Prunes the outbox table of old COMPLETED events.
- */
-export async function cleanupOutbox() {
-  console.log('🧹 Starting Outbox Pruning...');
-  try {
-    const result = await primaryPool.query(
-      "DELETE FROM outbox WHERE status = 'COMPLETED' AND updated_at < NOW() - INTERVAL '7 days'"
-    );
-    console.log(`✅ Cleanup finished. Removed ${result.rowCount} rows.`);
-  } catch (err) {
-    console.error('❌ Cleanup Job Failed:', err.message);
-  }
+export function startCleanupJob() {
+  console.log('📅 Scheduled: Outbox Cleanup (24h interval)');
+  
+  const run = async () => {
+    try { await cleanupOutbox(); } 
+    finally {
+      // ✅ Using setTimeout instead of setInterval prevents the negative warning
+      setTimeout(run, 24 * 60 * 60 * 1000); 
+    }
+  };
+  
+  // Delay the very first run by 1 minute to let the system stabilize
+  setTimeout(run, 60000); 
 }
-
-// Example usage with a basic setInterval (or use node-cron)
-setInterval(cleanupOutbox, 24 * 60 * 60 * 1000); // Once every 24 hours
