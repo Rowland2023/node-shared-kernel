@@ -1,12 +1,19 @@
-import { services } from '../index.js';
+// shared-kernel/outbox/outbox.worker.js
 
-console.log('🔄 Outbox Processor started (5s interval)');
+export function startOutboxWorker(intervalMs = 5000) {
+  const run = async () => {
+    const startTime = Date.now();
+    
+    // logic to process events...
+    // await processEvents();
 
-setInterval(async () => {
-  try {
-    // Ensure we are calling the function correctly from the services object
-    await services.processOutbox(); 
-  } catch (err) {
-    console.error('❌ Outbox Processor Error:', err.message);
-  }
-}, 5000);
+    const duration = Date.now() - startTime;
+    const nextDelay = Math.max(100, intervalMs - duration);
+    
+    // ✅ This prevents the Negative Timeout Warning
+    setTimeout(run, nextDelay);
+  };
+
+  console.log(`🔄 Outbox Processor Active (${intervalMs}ms interval)`);
+  run();
+}

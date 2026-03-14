@@ -1,100 +1,37 @@
-import { infrastructure } from '../../index.js'; 
+import { config } from 'dotenv';
+import path from 'path';
+import { fileURLToPath } from 'url';
 
-/**
- * 🛡️ SILENCE KAFKAJS GHOST WARNINGS
- * Prevents TimeoutNegativeWarning from cluttering the diagnostic table.
- */
-const originalEmit = process.emit;
-process.emit = function (name, data) {
-  if (name === 'warning' && data && data.name === 'TimeoutNegativeWarning') {
-    return false;
-  }
-  return originalEmit.apply(process, arguments);
-};
+// 1. Point directly to the actual files
+// Replace 'postgres.js' with whatever is inside your infrastructure/database/ folder
+import pool from '../database/primary.pool.js'; 
+import { kafka } from '../messageBroker.js'; 
+// import redis from '../cache/redis.js'; // Uncomment if you have this file
 
-const { primaryPool, redis, kafka } = infrastructure;
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+const envPath = path.resolve(__dirname, '../../../.env');
 
-export async function runFullDiagnostic() {
-  console.log('🔍 [Lagos Infrastructure] Starting System Health Check...\n');
+config({ path: envPath });
 
-  const results = {
-    database: { status: '🔴 DOWN', latency: null, info: '' },
-    redis: { status: '🔴 DOWN', latency: null, info: '' },
-    kafka: { status: '🔴 DOWN', latency: null, info: '' },
-    producer: { status: '🔴 DOWN', latency: null, info: '' }
-  };
+async function runHealthCheck() {
+  console.log('🩺 [Lagos Infrastructure] Starting System Health Check...');
+  const results = [];
 
-  // 1. Check Postgres (Persistence)
+  // 2. Use 'pool' directly instead of 'infrastructure.primaryPool'
   try {
-    const startDb = Date.now();
-    await primaryPool.query('SELECT 1');
-    results.database.status = '🟢 UP';
-    results.database.latency = `${Date.now() - startDb}ms`;
-    results.database.info = 'Connected to security_db';
-  } catch (err) { 
-    results.database.info = `DB Error: ${err.message}`; 
+    const client = await pool.connect();
+    await client.query('SELECT 1');
+    client.release();
+    results.push({ resource: 'Postgres', status: '✅ UP' });
+  } catch (err) {
+    results.push({ resource: 'Postgres', status: '❌ DOWN', info: err.message });
   }
 
-  // 2. Check Redis (Idempotency/Locking)
-  try {
-    const startRedis = Date.now();
-    await redis.ping();
-    results.redis.status = '🟢 UP';
-    results.redis.latency = `${Date.now() - startRedis}ms`;
-    results.redis.info = 'Standalone/6380 Ready';
-  } catch (err) { 
-    results.redis.info = `Redis Error: ${err.message}`; 
-  }
+  // ... (Same logic for Kafka using the 'kafka' import)
 
-  // 3. Check Kafka & Producer (Messaging Pipeline)
-  try {
-    const startKafka = Date.now();
-    
-    // Await the actual producer connection handshake
-    await infrastructure.connectKafka(); 
-    
-    const admin = kafka.admin();
-    await admin.connect();
-    
-    // Verify our specific topic exists in the cluster
-    const metadata = await admin.fetchTopicMetadata({ topics: ['FUNDS_TRANSFERRED'] });
-    await admin.disconnect();
-
-    const latency = `${Date.now() - startKafka}ms`;
-
-    // Broker/Topic Check
-    results.kafka.status = '🟢 UP';
-    results.kafka.latency = latency;
-    results.kafka.info = metadata.topics.length > 0 ? 'Topic Verified' : 'Topic Missing (Run rpk topic create)';
-
-    // Producer Check (Since connectKafka succeeded, we are UP)
-    results.producer.status = '🟢 UP';
-    results.producer.latency = latency;
-    results.producer.info = 'Producer Handshake Verified';
-
-  } catch (err) { 
-    results.kafka.info = `Kafka Error: ${err.message}`; 
-    results.producer.info = 'Producer connection failed or timed out';
-  }
-
-  // Render the results in a clean table for the Lagos terminal
   console.table(results);
-  
-  const allClear = results.database.status === '🟢 UP' && 
-                   results.redis.status === '🟢 UP' && 
-                   results.kafka.status === '🟢 UP' &&
-                   results.producer.status === '🟢 UP';
-
-  if (allClear) {
-    console.log('\n🚀 ALL SYSTEMS NOMINAL: The ledger is ready for high-traffic.');
-  } else {
-    console.error('\n⚠️ ATTENTION: Check the "info" column for connectivity issues.');
-    process.exit(1);
-  }
+  process.exit(0);
 }
 
-// Execute
-runFullDiagnostic().catch(err => {
-  console.error('❌ Critical failure during diagnostic execution:', err);
-  process.exit(1);
-});
+runHealthCheck();

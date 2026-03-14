@@ -1,28 +1,21 @@
 import { Kafka } from 'kafkajs';
 
-const kafka = new Kafka({
-  clientId: 'my-app',
-  // Since you're using Docker Redpanda, ensure this matches 
-  // your advertised listener (usually 127.0.0.1:19092 for host access)
-  brokers: [process.env.KAFKA_BROKER || 'localhost:19092'], 
+// 1. Initialize the instance 
+// (Make sure to export this so your health check can use it!)
+export const kafka = new Kafka({
+  clientId: process.env.KAFKA_CLIENT_ID || 'my-app',
+  brokers: [process.env.KAFKA_BROKER || 'localhost:9092'],
 });
 
-const producer = kafka.producer();
-const consumer = kafka.consumer({ groupId: 'my-group' });
+let producer = null;
 
-/**
- * Ensures the producer is ready before the 
- * Outbox Processor starts polling.
- */
+// 2. Define the connection logic
 export const connectKafka = async () => {
-  try {
-    console.log('📡 Connecting to Kafka/Redpanda...');
-    await producer.connect();
-    console.log('✅ Kafka Producer Connected');
-  } catch (err) {
-    console.error('❌ Kafka Connection Failed:', err);
-    process.exit(1); // Exit if we can't connect to our message backbone
-  }
+  if (producer) return producer;
+  producer = kafka.producer();
+  await producer.connect();
+  return producer;
 };
 
-export { kafka, producer, consumer };
+// 3. Define the getter
+export const getProducer = () => producer;
