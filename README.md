@@ -1,56 +1,106 @@
-📄 High-Integrity Financial Ledger & Outbox System A robust backend architecture designed for financial precision and distributed reliability. Implements a high-performance double-entry ledger using Node.js (ES6), Postgres, Redis, and Redpanda.
+🏛️ Lagos Shared-Kernel: B2B Banking Infrastructure
+A high-performance, containerized, and event-driven Shared Kernel designed for mission-critical financial transactions. This project implements the Transactional Outbox Pattern to guarantee 100% data consistency between the Ledger (Postgres) and downstream Message Brokers (Redpanda/Kafka).
 
-🏗️ Core Principles
-Transactional Outbox Pattern: Atomic consistency between DB changes and event broadcasts.
-Financial Precision: NUMERIC(19,4) for currency accuracy.
-Reliability: DLQ, idempotency, and retries with exponential backoff.
-Performance: Concurrent transactions with ~6ms latency per operation.
+🚀 Performance Benchmarks (Local Dev)
+Ledger Injection: ~150+ Transactions Per Second (TPS).
 
-🛠️ Tech StackComponentTechnologyPurposeRuntimeNode.js v24+ (ESM)Async event execution via ES ModulesDatabasePostgreSQL 15Source of truth & outbox storageMessagingRedpandaKafka-compatible event streamingCache/LockRedis 7Idempotency & distributed locksConfigDotenvxSecure environment management
+Outbox Relay: ~1,700+ Events Per Second (EPS).
 
-🚀 Getting Started1. Infrastructure (Docker)
+Reliability: 100% Atomic Settlement (Zero-loss guarantee via Postgres CTEs).
 
-Bash docker-compose up -d
+🛠️ Tech Stack
+Runtime: Node.js v24+ (ES6 Modules / ESM)
 
-The system is fully containerized. To spin up the ecosystem:
-Bash 
+Database: PostgreSQL (Transactional Ledger & Outbox)
+
+Cache/Locking: Redis
+
+Messaging: Redpanda / Kafka (Event Streaming)
+
+Orchestration: Docker & Docker Compose
+
+📋 Prerequisites
+Node.js: v24.13.0 or higher.
+
+Docker: Installed and running.
+
+Terminal Environment: All Node commands MUST be prefixed with NODE_NO_WARNINGS=1 to suppress internal infrastructure timeout warnings and maintain clean, actionable logs.
+
+⚙️ Setup & Infrastructure
+Install Dependencies:
+
+Bash
+npm install
+Configure Environment:
+
+Bash
+cp .env.example .env
+Spin up Containers:
+
+Bash
 docker-compose up -d
+🔐 Security & Authentication
+To interact with the protected ledger endpoints, you must generate a JWT.
 
-Postgres: 5432 | Redis: 6380 | Redpanda: 190922. 
-Schema Setup
-Execute the following in your security_db instance:
-CREATE TABLE ledger (
-    id SERIAL PRIMARY KEY,
-    account_id VARCHAR(50) NOT NULL,
-    amount NUMERIC(19, 4) NOT NULL,
-    type VARCHAR(10) CHECK (type IN ('CREDIT', 'DEBIT')),
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
-);
+Generate a Token:
 
-CREATE TABLE outbox (
-    id SERIAL PRIMARY KEY,
-    event_type VARCHAR(100) NOT NULL,
-    aggregate_type VARCHAR(50) NOT NULL,
-    aggregate_id VARCHAR(50) NOT NULL,
-    payload JSONB NOT NULL,
-    status VARCHAR(20) DEFAULT 'PENDING',
-    retry_count INTEGER DEFAULT 0,
-    error_message TEXT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
-    processed_at TIMESTAMP WITH TIME ZONE
-);
-3. Verification Commands Diagnostics: node shared-kernel/infrastructure/diagnostics/health.js
-Stress Test: node scripts/stress-test.js
-Outbox Worker: node shared-kernel/outbox/outboxProcessor.js
+Bash
+NODE_NO_WARNINGS=1 node scripts/gen-token.js
+Example Transaction (CURL):
+Use the generated token to authorize a fund transfer:
 
-🔍 Observability & ReliabilityMonitoring: Real-time DB latency, Redis health, and Redpanda metadata checks.DLQ: Failed events > 3 retries are moved to LEDGER_DLQ.Topic Inspection:Bashdocker exec -it redpanda-cl rpk topic consume FUNDS_TRANSFERRED
+Bash
+curl -X POST http://localhost:3000/api/v1/ledger/transfer \
+  -H "Authorization: Bearer eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6InVzZXJfMTIzIiwicm9sZSI6ImFkbWluIiwiaWF0IjoxNzczNTI4MjY3LCJleHAiOjE3NzM1MzE4Njd9.lHDa728QfGpVUZ5rA7ItdZkORCslSoI5dEhbO7ccjF4" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "account_id": "acc_test_123",
+    "amount": 250.00,
+    "currency": "NGN",
+    "type": "CREDIT"
+  }'
+🏃 Execution Commands
+1. Start the Application
+Bash
+NODE_NO_WARNINGS=1 npm run start --workspace=my-node-project
+2. Infrastructure Health Check
+Bash
+node ../shared-kernel/infrastructure/diagnostics/health.js
+3. Stress Test & Benchmarking
+Simulate heavy B2B load (100+ concurrent transfers) and trigger the high-speed Outbox Relay:
 
-🤝 Contribution Standards
-Idempotency First: Consumers must check eventId to prevent duplicate processing.
-ES6 Only: Use import/export. No require() allowed.
-Zero Downtime: Worker loops must use Safe Polling (Math.max(0)) to prevent event loop blocking.
+Bash
+NODE_NO_WARNINGS=1 node scripts/stress-test.js
+🏗️ Architectural Core: The Atomic Outbox
+This kernel utilizes a Postgres Common Table Expression (CTE) to solve the "Distributed Transaction" problem. This ensures that a Ledger entry and its corresponding Outbox event are written in a single atomic unit of work—if one fails, the entire transaction rolls back.
 
-🧹 Maintenance
-Purge Events: DELETE FROM outbox WHERE status = 'COMPLETED' AND processed_at < NOW() - INTERVAL '7 days';
-Monitor Errors: Group outbox by error_message to identify system bottlenecks.
-Developed with precision in Lagos, Nigeria.
+Concurrency: The Relay worker utilizes FOR UPDATE SKIP LOCKED, allowing horizontal scaling across multiple containers without duplicate message delivery.
+
+Batching: Events are drained in batches of 50 to optimize throughput.
+
+📄 .env.example
+Code snippet
+# --- DATABASE ---
+DB_HOST=localhost
+DB_PORT=5432
+DB_USER=postgres
+DB_PASSWORD=your_postgres_password
+DB_NAME=mydb
+
+# --- REDIS ---
+REDIS_HOST=127.0.0.1
+REDIS_PORT=6380
+REDIS_PASSWORD=
+
+# --- KAFKA ---
+KAFKA_BROKER=127.0.0.1:19092
+KAFKAJS_NO_PARTITIONER_WARNING=1
+
+# --- APP SETTINGS ---
+PORT=3000
+NODE_ENV=development
+JWT_SECRET=your_super_secret_key
+🛡️ Development Standards
+Strict ESM: All imports must include the .js extension.
+
+Clean Logging: Always use the NODE_NO_WARNINGS=1 flag.

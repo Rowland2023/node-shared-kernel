@@ -1,13 +1,10 @@
-// /shared-kernel/infrastructure/messaging/subscriber.js
-import { connectKafka } from './kafka.client.js';
+// shared-kernel/infrastructure/messaging/subscriber.js
 
-export async function subscribe(topic, handler) {
-  await consumer.subscribe({ topic, fromBeginning: true });
-  await consumer.run({
-    eachMessage: async ({ message }) => {
-      handler(JSON.parse(message.value.toString()));
-    },
-  });
-}
+// 1. You must import it from your client first
+import { kafka, getProducer } from './kafka.client.js'; 
 
+// ... your subscriber logic (consumer, etc.) ...
+
+// 2. Now you can export the producer if other files need it
+const producer = getProducer();
 export { producer };
