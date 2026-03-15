@@ -2,12 +2,14 @@ import { config } from 'dotenv';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import express from 'express';
+// 1. ADD THIS IMPORT HERE
+import ledgerRouter from './routes/ledger.routes.js'; 
 
-// 1. LOAD ENV IMMEDIATELY (Before importing the kernel)
+// --- ENV CONFIG ---
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 config({ path: path.resolve(__dirname, '../.env') });
 
-// 2. NOW IMPORT THE KERNEL (Now that process.env is populated)
+// --- KERNEL IMPORT ---
 const { 
   infrastructure, 
   startOutboxWorker,
@@ -15,17 +17,20 @@ const {
 } = await import('@yourorg/shared-kernel');
 
 const app = express();
+
+// 2. ADD THESE MIDDLEWARE LINES HERE (Before the (async () => {}) block)
+app.use(express.json()); 
+app.use('/api/v1/ledger', ledgerRouter); 
+
 const PORT = process.env.PORT || 3000;
 
 (async () => {
   try {
     console.log('🏁 Starting Bootstrap...');
 
-    // 3. SEQUENTIAL BOOT (The Waterfall)
-    // Connecting Redis first
+    // 3. SEQUENTIAL BOOT
     await infrastructure.connectRedis();
     
-    // Connecting Kafka (This will now find your brokers in process.env)
     console.log('📡 Connecting to Kafka...');
     await infrastructure.connectKafka(); 
     console.log('✅ Kafka Producer Connected');
@@ -34,7 +39,7 @@ const PORT = process.env.PORT || 3000;
     const server = app.listen(PORT, () => {
       console.log(`🚀 Server listening on http://localhost:${PORT}`);
       
-      // 5. START WORKERS (Wait for idle to prevent TimeoutNegativeWarning)
+      // 5. START WORKERS
       startOutboxWorker(5000); 
       startCleanupJob();
     });

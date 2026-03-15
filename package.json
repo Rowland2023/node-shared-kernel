@@ -11,6 +11,7 @@
     "start": "npm run start --workspace=my-node-project"
   },
   "dependencies": {
-    "dotenv": "^17.3.1"
+    "dotenv": "^17.3.1",
+    "kafkajs": "^2.2.4"
   }
 }
