@@ -43,9 +43,9 @@ docker-compose up -d
 To interact with the protected ledger endpoints, you must generate a JWT.
 
 Generate a Token:
-
 Bash
-NODE_NO_WARNINGS=1 node scripts/gen-token.js
+node ../gen-token.js
+
 Example Transaction (CURL):
 Use the generated token to authorize a fund transfer:
 
