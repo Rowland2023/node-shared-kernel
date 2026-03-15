@@ -1,46 +1,26 @@
-import { ledgerModel } from './models.js'; // Fixed import syntax
-import { services, observability } from '@yourorg/shared-kernel';
+import { infrastructure } from '@yourorg/shared-kernel';
 
-export const handleTransfer = async (req, res) => {
-  console.log('🎯 STEP 1: Controller Reached'); 
-  
-  // Aligning keys with the model's expected parameters
-  const { account_id, amount, type, reference, currency } = req.body;
-  const authUser = req.user?.id; 
-
+export async function handleTransfer(req, res) {
   try {
-    console.log('⏳ STEP 1.5: Attempting Atomic Database Write...');
-    
-    // Call the model function directly from the named export
-    const transactionData = await ledgerModel.createTransfer({ 
-      account_id: account_id || authUser, // Fallback to auth user if account_id missing
-      amount, 
-      type: type || 'DEBIT',
-      reference: reference || 'API_TRANSFER',
-      currency: currency || 'NGN'
+    const { account_id, amount, currency, type, reference } = req.body;
+
+    console.log(`🎯 Controller: Sending ${type} for ${account_id} to Kafka...`);
+
+    await infrastructure.enqueueTransfer({
+      account_id,
+      amount,
+      currency,
+      type,
+      reference,
     });
 
-    // Logging for Lagos Observability stack
-    observability.logger.info('✅ Transfer successful', { 
-      ledgerId: transactionData.ledger_id,
-      user: authUser 
-    });
-
-    console.log('🎯 STEP 3: Logic Completed. Sending response.');
-    return res.status(201).json({
+    res.status(202).json({
       success: true,
-      message: "Transaction completed and scheduled for relay.",
-      data: transactionData
+      message: 'Transfer accepted for processing',
+      reference,
     });
-
   } catch (err) {
-    console.error('🎯 ERROR CAUGHT:', err.message);
-    
-    observability.logger.error('❌ Critical Ledger Error', { error: err.message });
-    
-    return res.status(500).json({ 
-      error: "Internal Server Error", 
-      message: err.message 
-    });
+    console.error('❌ Transfer Error:', err);
+    res.status(500).json({ success: false, error: err.message });
   }
-};
+}
