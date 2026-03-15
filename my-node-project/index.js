@@ -31,13 +31,20 @@ app.listen(PORT, async () => {
   console.log('🏁 Starting Lagos Ledger Infrastructure Handshake...');
 
   try {
+    // Connect Redis once
     await infrastructure.connectRedis();
     console.log('✅ Redis: Connected (Port 6380)');
 
+    // Connect Postgres once
+    await infrastructure.connectPostgres();
+    console.log('✅ Postgres: Connected');
+
+    // Connect Kafka once and initialize producer
     console.log('📡 Connecting to Kafka (Port 19092)...');
-    await infrastructure.connectKafka();
+    await infrastructure.connectKafka();   // sets up producer internally
     console.log('✅ Kafka: Connected');
 
+    // Start background workers
     startOutboxWorker(5000);
     startCleanupJob();
     console.log('⚙️ Workers: Outbox and Cleanup started.');
