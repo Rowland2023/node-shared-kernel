@@ -1,37 +1,20 @@
-// 1. Pointing to the actual filename found on disk
-import { redis } from '../infrastructure/cache/redis.cluster.js';
+const requests = new Map();
 
-/**
- * Higher-Order Function for Rate Limiting
- * @param {number} limit - Max requests allowed
- * @param {number} windowSeconds - Time window in seconds
- */
-export default function rateLimiter(limit = 100, windowSeconds = 60) {
-  return async (req, res, next) => {
-    try {
-      const key = `rate:${req.ip}`;
-      
-      // Atomic increment in Redis
-      const count = await redis.incr(key);
+export function rateLimiter(limit, windowSeconds) {
+  return (req, res, next) => {
+    const ip = req.ip;
+    const now = Date.now();
+    const windowStart = now - windowSeconds * 1000;
 
-      // Set expiration only on the first hit
-      if (count === 1) {
-        await redis.expire(key, windowSeconds);
-      }
+    if (!requests.has(ip)) requests.set(ip, []);
+    const timestamps = requests.get(ip).filter(ts => ts > windowStart);
 
-      // Check threshold
-      if (count > limit) {
-        return res.status(429).json({ 
-          error: 'Too many requests',
-          retryAfter: windowSeconds 
-        });
-      }
-
-      next();
-    } catch (err) {
-      // If Redis is down, we "fail open" so users can still register
-      console.error('[RateLimiter] Redis Error:', err.message);
-      next();
+    if (timestamps.length >= limit) {
+      return res.status(429).json({ error: 'Too many requests' });
     }
+
+    timestamps.push(now);
+    requests.set(ip, timestamps);
+    next();
   };
 }
